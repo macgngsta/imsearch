@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>imsearch</title>
+  <script src="/static/vendor/tailwind.browser.js"></script>
+  <link href="/static/vendor/daisyui.css" rel="stylesheet" type="text/css" />
+  <style>
+    /* Explicit styles for dynamically-injected result markup, so rendering never
+       depends on the in-browser Tailwind JIT catching up with new nodes. */
+    .msg { display: flex; flex-direction: column; gap: .25rem; margin-bottom: 1rem; max-width: 46rem; }
+    .msg.me { align-self: flex-end; align-items: flex-end; }
+    .msg-meta { font-size: .75rem; opacity: .6; }
+    .img-grid { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .25rem; }
+    .thumb { width: 180px; height: 180px; object-fit: cover; border-radius: .5rem;
+             cursor: zoom-in; background: var(--color-base-300); }
+    #results { display: flex; flex-direction: column; }
+    dialog img { max-width: 92vw; max-height: 88vh; border-radius: .5rem; }
+  </style>
+</head>
+<body class="min-h-screen bg-base-200">
+  <div class="navbar bg-base-100 shadow-sm">
+    <div class="flex-1 px-2 text-xl font-semibold">🔍 imsearch</div>
+    <label class="swap swap-rotate px-2">
+      <input type="checkbox" id="theme" />
+      <span class="swap-on">🌙</span>
+      <span class="swap-off">☀️</span>
+    </label>
+  </div>
+
+  <main class="mx-auto max-w-4xl p-4">
+    <form id="form" class="card bg-base-100 shadow-sm mb-6">
+      <div class="card-body gap-3">
+        <div class="flex flex-wrap gap-3">
+          <input name="q" class="input input-bordered grow min-w-52" placeholder="Search text…" autofocus />
+          <input name="name" class="input input-bordered w-56" placeholder="Contact name (e.g. Jane)" />
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <select name="last" class="select select-bordered">
+            <option value="">Any time</option>
+            <option value="3h">Past 3 hours</option>
+            <option value="1d">Past day</option>
+            <option value="1w">Past week</option>
+            <option value="30d">Past 30 days</option>
+          </select>
+          <label class="label cursor-pointer gap-2">
+            <input type="checkbox" name="images_only" class="checkbox checkbox-sm" />
+            <span class="label-text">Images only</span>
+          </label>
+          <label class="label cursor-pointer gap-2">
+            <input type="checkbox" name="deleted" class="checkbox checkbox-sm" />
+            <span class="label-text">Include deleted</span>
+          </label>
+          <button class="btn btn-primary ml-auto" type="submit">Search</button>
+        </div>
+      </div>
+    </form>
+
+    <div id="status" class="text-sm opacity-70 mb-3"></div>
+    <div id="results"></div>
+  </main>
+
+  <dialog id="viewer" class="modal">
+    <div class="modal-box max-w-fit p-2">
+      <img id="viewer-img" src="" alt="" />
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <script>
+    const form = document.getElementById("form");
+    const results = document.getElementById("results");
+    const status = document.getElementById("status");
+    const viewer = document.getElementById("viewer");
+    const viewerImg = document.getElementById("viewer-img");
+
+    document.getElementById("theme").addEventListener("change", (e) => {
+      document.documentElement.dataset.theme = e.target.checked ? "dark" : "light";
+    });
+
+    function fmtDate(iso) {
+      if (!iso) return "?";
+      return new Date(iso).toLocaleString([], {
+        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+    }
+    function fmtSize(n) {
+      if (!n) return "";
+      const u = ["B", "KB", "MB", "GB"]; let i = 0, s = n;
+      while (s >= 1024 && i < u.length - 1) { s /= 1024; i++; }
+      return `${i ? s.toFixed(1) : s} ${u[i]}`;
+    }
+
+    function attachmentNode(a) {
+      if (a.is_image) {
+        const img = document.createElement("img");
+        img.className = "thumb";
+        img.loading = "lazy";
+        img.src = a.url;
+        img.alt = a.name;
+        img.title = `${a.name} · ${fmtSize(a.size)}`;
+        img.addEventListener("click", () => { viewerImg.src = a.url; viewer.showModal(); });
+        // HEIC and other browser-unsupported images fall back to a download link.
+        img.addEventListener("error", () => img.replaceWith(fileLink(a)));
+        return img;
+      }
+      return fileLink(a);
+    }
+    function fileLink(a) {
+      const link = document.createElement("a");
+      link.className = "link link-primary text-sm";
+      link.href = a.url; link.target = "_blank";
+      link.textContent = `📎 ${a.name} · ${a.mime || "file"} · ${fmtSize(a.size)}`;
+      return link;
+    }
+
+    function messageNode(m) {
+      const wrap = document.createElement("div");
+      wrap.className = "msg" + (m.is_from_me ? " me" : "");
+
+      const meta = document.createElement("div");
+      meta.className = "msg-meta";
+      meta.textContent = `${m.sender} · ${fmtDate(m.date)}`;
+      if (m.is_deleted) {
+        const b = document.createElement("span");
+        b.className = "badge badge-error badge-sm ml-2";
+        b.textContent = "deleted";
+        meta.appendChild(b);
+      }
+      wrap.appendChild(meta);
+
+      const objReplacement = /^￼*$/; // messages that are attachment-only
+      if (m.text && !objReplacement.test(m.text)) {
+        const bubble = document.createElement("div");
+        bubble.className = "chat-bubble " + (m.is_from_me ? "chat-bubble-primary" : "");
+        bubble.textContent = m.text;
+        wrap.appendChild(bubble);
+      }
+
+      const imgs = m.attachments.filter((a) => a.url);
+      if (imgs.length) {
+        const grid = document.createElement("div");
+        grid.className = "img-grid";
+        imgs.forEach((a) => grid.appendChild(attachmentNode(a)));
+        wrap.appendChild(grid);
+      }
+      return wrap;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      status.textContent = "Searching…";
+      results.replaceChildren();
+
+      const fd = new FormData(form);
+      const params = new URLSearchParams();
+      for (const [k, v] of fd.entries()) {
+        if (v === "" ) continue;
+        params.set(k, v === "on" ? "true" : v);
+      }
+      try {
+        const res = await fetch("/api/search?" + params.toString());
+        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+        const data = await res.json();
+        const msgs = data.messages || [];
+        status.textContent = data.note
+          ? data.note
+          : `${msgs.length} message${msgs.length === 1 ? "" : "s"}`;
+        const frag = document.createDocumentFragment();
+        msgs.forEach((m) => frag.appendChild(messageNode(m)));
+        results.appendChild(frag);
+      } catch (err) {
+        status.textContent = "Error: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>

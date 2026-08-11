@@ -1,0 +1,43 @@
+[tools]
+python = "3.14"
+uv = "latest"
+
+[env]
+# uv creates/uses .venv in the project root
+UV_PYTHON = "3.14"
+
+[tasks.setup]
+description = "Install dependencies into the project venv"
+run = "uv sync"
+
+[tasks.search]
+description = "Search iMessage. Pass args, e.g. mise run search -- 'dinner' --contact +15551234567 --context 3"
+run = "uv run imsearch search"
+
+[tasks.thread]
+description = "Reconstruct a conversation, e.g. mise run thread -- --contact 5555550142 --since 2025-01-01"
+run = "uv run imsearch thread"
+
+[tasks."serve:start"]
+description = "Start the local web UI in the background at http://127.0.0.1:8000"
+run = """
+if [ -f .serve.pid ] && kill -0 "$(cat .serve.pid)" 2>/dev/null; then
+  echo "already running (pid $(cat .serve.pid)) → http://127.0.0.1:8000"
+  exit 0
+fi
+nohup uv run imsearch serve --host 127.0.0.1 --port 8000 > .serve.log 2>&1 &
+echo $! > .serve.pid
+sleep 1
+echo "imsearch serving → http://127.0.0.1:8000 (pid $(cat .serve.pid)); logs: .serve.log"
+"""
+
+[tasks."serve:stop"]
+description = "Stop the background web UI"
+run = """
+if [ -f .serve.pid ] && kill "$(cat .serve.pid)" 2>/dev/null; then
+  echo "stopped (pid $(cat .serve.pid))"
+else
+  echo "not running"
+fi
+rm -f .serve.pid
+"""
