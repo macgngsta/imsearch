@@ -184,6 +184,18 @@ Units: `s` seconds, `m` minutes, `h` hours, `d` days, `w` weeks. Mutually exclus
 
 ---
 
+## Limitations
+
+- **Substring search only** — matching is plain case-insensitive substring, not fuzzy or
+  regex, and there's no full-text index. Common terms are matched against a bounded
+  candidate set, so an extremely frequent word may not surface every historical hit at once
+  (narrow with `--contact`/`--name`/date filters).
+- **macOS only** — it reads Apple's `chat.db` and `AddressBook` schemas directly.
+- **Non-text payloads** render as a placeholder; reactions/tapbacks and edited-message
+  history aren't reconstructed specially. HEIC attachments fall back to a link in the web UI.
+- **Schema drift** — Apple can change the `chat.db` schema between macOS releases; a future
+  version may need adjustments.
+
 ## How it works
 
 - **Text decoding** — prefers the plain `text` column, falls back to decoding the
@@ -231,3 +243,11 @@ web layer (search API, attachment serving, and path-traversal protection).
 - **Local only**: the web server binds to `127.0.0.1`; nothing leaves your machine and no
   external CDNs are contacted (front-end assets are vendored).
 - Your messages and contacts stay on disk — `imsearch` just reads and displays them.
+
+## License
+
+[MIT](LICENSE) © Greg Tam.
+
+Vendored front-end assets under `src/imsearch/static/vendor/` are third-party and MIT
+licensed: [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) and
+[daisyUI](https://github.com/saadeghi/daisyui).

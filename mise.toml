@@ -10,6 +10,10 @@ UV_PYTHON = "3.14"
 description = "Install dependencies into the project venv"
 run = "uv sync"
 
+[tasks.test]
+description = "Run the test suite"
+run = "uv run pytest -q"
+
 [tasks.search]
 description = "Search iMessage. Pass args, e.g. mise run search -- 'dinner' --contact +15551234567 --context 3"
 run = "uv run imsearch search"

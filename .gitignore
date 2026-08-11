@@ -4,3 +4,17 @@ __pycache__/
 .pytest_cache/
 .serve.pid
 .serve.log
+
+# Never commit message/contact data or their sidecars
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.abcddb
+chat.db*
+Attachments/
+
+# Local environment
+.env
+.env.*
